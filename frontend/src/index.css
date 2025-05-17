@@ -1,0 +1,150 @@
+/* Temel stiller */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+main {
+  min-height: 80vh;
+}
+
+/* Jumbotron stili */
+.jumbotron {
+  background-color: #f8f9fa;
+  padding: 2rem;
+  border-radius: 0.3rem;
+  margin-bottom: 2rem;
+}
+
+/* Form container */
+.form-container {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Cüzdan bilgileri */
+.wallet-info {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.3rem;
+  margin-bottom: 1rem;
+}
+
+/* İşlem kartları */
+.transaction-card {
+  margin-bottom: 1rem;
+  transition: transform 0.2s;
+}
+
+.transaction-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Adres görüntüleme */
+.address-display {
+  font-family: monospace;
+  word-break: break-all;
+}
+
+/* Tablo düzenlemeleri */
+.table-responsive {
+  overflow-x: auto;
+}
+
+/* Buton düzenlemeleri */
+.btn-primary {
+  background-color: #007bff;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+}
+
+/* İkon düzenlemeleri */
+.fa-icon {
+  margin-right: 0.5rem;
+}
+
+/* Responsive ayarlar */
+@media (max-width: 576px) {
+  .container {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  
+  h1 {
+    font-size: 1.8rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+}
+
+/* Blockchain özel stiller */
+.blockchain-info {
+  background-color: #f0f9ff;
+  border-left: 4px solid #007bff;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Badge stiller */
+.badge {
+  padding: 0.5em 0.75em;
+  font-weight: 500;
+}
+
+/* İşlem listesi stilleri */
+.transaction-list tr {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.transaction-list tr:hover {
+  background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Cüzdan adres kutusu */
+.wallet-address {
+  background-color: #f8f9fa;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.wallet-address .copy-icon {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.wallet-address .copy-icon:hover {
+  opacity: 1;
+}
+
+/* Footer stili */
+footer {
+  background-color: #f8f9fa;
+  padding: 1rem 0;
+  margin-top: 2rem;
+}
