@@ -17,4 +17,10 @@ router.get('/:id', protect, transactionController.getTransactionById);
 // Yeni işlem oluştur
 router.post('/create', protect, transactionController.createTransaction);
 
+// transactionRoutes.js dosyasına ekleyeceğiniz route
+// Bu route'u mevcut transactionRoutes.js dosyanızdaki diğer route'ların yanına ekleyin
+
+// Senkronizasyon endpoint'i
+router.post('/sync-status', protect, transactionController.syncTransactionStatus);
+
 module.exports = router;

@@ -1,3 +1,5 @@
+// C:\Users\HUAWEI\blockchain-mikro-odeme\frontend\src\screens\TransactionsScreen.js
+
 import React, { useEffect, useState } from 'react';
 import { Container, Card, Alert, Spinner, Table, Badge, Button, Form, Modal } from 'react-bootstrap';
 import { useSelector, useDispatch } from 'react-redux';

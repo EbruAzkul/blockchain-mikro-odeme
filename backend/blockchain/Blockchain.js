@@ -326,6 +326,9 @@ class Blockchain {
 
   // C:\Users\HUAWEI\blockchain-mikro-odeme\backend\blockchain\Blockchain.js içinde isChainValid fonksiyonunu güncelleyin
 
+// Blockchain.js dosyasına eklenecek güncellenmiş isChainValid fonksiyonu
+// Bu fonksiyonu mevcut Blockchain.js dosyanızdaki isChainValid fonksiyonu ile değiştirin
+
 isChainValid() {
   // Test modunda her zaman true döndür
   if (this.testMode) {

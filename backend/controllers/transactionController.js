@@ -157,3 +157,47 @@ exports.createTransaction = async (req, res) => {
     res.status(500).json({ message: error.message || 'Sunucu hatası' });
   }
 };
+
+// transactionController.js dosyasına ekleyeceğiniz senkronizasyon fonksiyonu
+// Bu fonksiyonu mevcut transactionController.js dosyanızın sonuna ekleyin
+
+// İşlem durumlarını senkronize et
+exports.syncTransactionStatus = async (req, res) => {
+  try {
+    console.log('İşlem durumları senkronize ediliyor...');
+    
+    // Tüm bekleyen işlemleri veritabanından al
+    const pendingTxs = await TransactionModel.find({ processed: false });
+    
+    // Blockchain'den tüm işlemleri al (sadece madencilik yapılmış olanlar)
+    const blockchainTxs = blockchainService.getAllTransactions();
+    
+    // Eşleşen işlemleri güncelle
+    let updatedCount = 0;
+    for (const pendingTx of pendingTxs) {
+      // İşlemin imzasına göre blockchain'de ara
+      const matchingTx = blockchainTxs.find(tx => 
+        tx.signature === pendingTx.signature && tx.blockIndex !== undefined
+      );
+      
+      if (matchingTx) {
+        // İşlemi "işlenmiş" olarak güncelle
+        await TransactionModel.findOneAndUpdate(
+          { signature: pendingTx.signature },
+          { processed: true, blockIndex: matchingTx.blockIndex, status: 'COMPLETED' }
+        );
+        updatedCount++;
+      }
+    }
+    
+    // Güncelleme sonuçlarını döndür
+    res.json({ 
+      success: true, 
+      message: `${updatedCount} işlem senkronize edildi.`,
+      pendingTransactions: pendingTxs.length - updatedCount
+    });
+  } catch (error) {
+    console.error('İşlem durumu senkronizasyon hatası:', error);
+    res.status(500).json({ message: error.message || 'İşlem durumları senkronize edilemedi' });
+  }
+};

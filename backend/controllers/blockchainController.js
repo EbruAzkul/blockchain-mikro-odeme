@@ -2,8 +2,6 @@
 
 const blockchainService = require('../services/blockchainService');
 
-// C:\Users\HUAWEI\blockchain-mikro-odeme\backend\controllers\blockchainController.js içinde getBlockchainInfo fonksiyonunu güncelleyin
-
 // Blockchain bilgilerini getir
 exports.getBlockchainInfo = async (req, res) => {
   try {

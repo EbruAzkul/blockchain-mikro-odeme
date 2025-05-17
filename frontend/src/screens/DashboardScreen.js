@@ -18,6 +18,11 @@ const DashboardScreen = () => {
   const [privateKey, setPrivateKey] = useState('');
   const [blockchainInfo, setBlockchainInfo] = useState(null);
   const [blockchainInfoLoading, setBlockchainInfoLoading] = useState(false);
+  
+  // Madencilik için state değişkenleri
+  const [miningLoading, setMiningLoading] = useState(false);
+  const [miningSuccess, setMiningSuccess] = useState('');
+  const [miningError, setMiningError] = useState('');
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -68,6 +73,48 @@ const DashboardScreen = () => {
     }
   };
 
+  // Madencilik işlemi
+  const handleMineTransactions = async () => {
+    try {
+      setMiningLoading(true);
+      
+      const config = {
+        headers: {
+          Authorization: `Bearer ${userInfo.token}`,
+        },
+      };
+      
+      const { data } = await axios.post(
+        'http://localhost:5000/api/blockchain/mine',
+        { minerAddress: userInfo.walletAddress },
+        config
+      );
+      
+      // Başarılı madencilik sonrası verileri yenile
+      dispatch(getWalletBalance());
+      dispatch(getTransactions());
+      fetchBlockchainInfo();
+      
+      // Başarı mesajını göster
+      setMiningSuccess('Madencilik başarılı! Yeni blok oluşturuldu.');
+      
+      // 3 saniye sonra başarı mesajını temizle
+      setTimeout(() => {
+        setMiningSuccess('');
+      }, 3000);
+    } catch (error) {
+      console.error('Madencilik hatası:', error);
+      setMiningError('Madencilik işlemi sırasında bir hata oluştu.');
+      
+      // 3 saniye sonra hata mesajını temizle
+      setTimeout(() => {
+        setMiningError('');
+      }, 3000);
+    } finally {
+      setMiningLoading(false);
+    }
+  };
+
   // İşlem başarıyla oluşturulduysa formu sıfırla
   useEffect(() => {
     if (createSuccess) {
@@ -113,6 +160,9 @@ const DashboardScreen = () => {
       {createSuccess && (
         <Alert variant="success">İşlem başarıyla oluşturuldu!</Alert>
       )}
+      
+      {miningSuccess && <Alert variant="success">{miningSuccess}</Alert>}
+      {miningError && <Alert variant="danger">{miningError}</Alert>}
 
       <Row>
         {/* Sol Panel - Cüzdan Bilgileri */}
@@ -162,6 +212,13 @@ const DashboardScreen = () => {
                 </Button>
                 <Button variant="success" as={Link} to="/fund-wallet">
                   Bakiye Yükle
+                </Button>
+                <Button 
+                  variant="warning" 
+                  onClick={handleMineTransactions}
+                  disabled={miningLoading}
+                >
+                  {miningLoading ? 'Madencilik Yapılıyor...' : 'Madencilik Yap'}
                 </Button>
                 <Button variant="outline-primary" as={Link} to="/transactions">
                   Tüm İşlemleri Gör
@@ -295,8 +352,8 @@ const DashboardScreen = () => {
                       </thead>
                       <tbody>
                         {transactions.slice(0, 5).map((tx) => (
-                          <tr key={tx._id}>
-                            <td>{tx._id?.substring(0, 8)}...</td>
+                          <tr key={tx._id || `tx-${Math.random()}`}>
+                            <td>{tx._id ? tx._id.substring(0, 8) + '...' : 'N/A'}</td>
                             <td>
                               {tx.from === userInfo?.walletAddress ? (
                                 <Badge bg="danger">Gönderim</Badge>
@@ -309,7 +366,7 @@ const DashboardScreen = () => {
                                 ? shortenAddress(tx.to)
                                 : shortenAddress(tx.from)}
                             </td>
-                            <td>{tx.amount} MikroCoin</td>
+                            <td>{tx.amount || 0} MikroCoin</td>
                             <td>
                               {tx.status === 'COMPLETED' ? (
                                 <Badge bg="success">Tamamlandı</Badge>
