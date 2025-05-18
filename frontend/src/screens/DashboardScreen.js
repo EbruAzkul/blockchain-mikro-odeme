@@ -1,7 +1,6 @@
-// C:\Users\HUAWEI\blockchain-mikro-odeme\frontend\src\screens\DashboardScreen.js
-
+// frontend/src/screens/DashboardScreen.js
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Alert, Form, Table, Badge } from 'react-bootstrap';
+import { Row, Col, Card, Button, Alert, Form, Table, Badge, Spinner } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import Loader from '../components/Loader';
@@ -18,6 +17,8 @@ const DashboardScreen = () => {
   const [privateKey, setPrivateKey] = useState('');
   const [blockchainInfo, setBlockchainInfo] = useState(null);
   const [blockchainInfoLoading, setBlockchainInfoLoading] = useState(false);
+  const [blockchainInfoError, setBlockchainInfoError] = useState(null);
+  const [refreshingData, setRefreshingData] = useState(false);
   
   // Madencilik için state değişkenleri
   const [miningLoading, setMiningLoading] = useState(false);
@@ -43,18 +44,44 @@ const DashboardScreen = () => {
     // Kullanıcı girişi kontrolü
     if (!userInfo) {
       navigate('/login');
-    } else {
+      return; // Daha fazla işlem yapılmasını önlemek için return ekle
+    } 
+    
+    // Veri yükleme işlemlerini başlat
+    loadDashboardData();
+  }, [userInfo, navigate]);
+
+  // Dashboard verilerini yükleme fonksiyonu
+  const loadDashboardData = () => {
+    try {
+      setRefreshingData(true);
       // Cüzdan bakiyesi ve işlemleri getir
       dispatch(getWalletBalance());
       dispatch(getTransactions());
       fetchBlockchainInfo();
+    } catch (error) {
+      console.error('Dashboard veri yükleme hatası:', error);
+    } finally {
+      setRefreshingData(false);
     }
-  }, [dispatch, navigate, userInfo]);
+  };
+
+  // Verileri manuel olarak yenileme
+  const handleRefreshData = () => {
+    loadDashboardData();
+  };
 
   // Blockchain bilgilerini getir
   const fetchBlockchainInfo = async () => {
     try {
       setBlockchainInfoLoading(true);
+      setBlockchainInfoError(null);
+      
+      // Kullanıcı kontrolü
+      if (!userInfo || !userInfo.token) {
+        throw new Error('Kullanıcı oturumu geçersiz');
+      }
+      
       const config = {
         headers: {
           Authorization: `Bearer ${userInfo.token}`,
@@ -63,12 +90,19 @@ const DashboardScreen = () => {
 
       console.log("Blockchain bilgisi getiriliyor...");
       const { data } = await axios.get('http://localhost:5000/api/blockchain/info', config);
+      
+      // Veri güvenlik kontrolü
+      if (!data || typeof data !== 'object') {
+        throw new Error('Geçersiz blockchain veri formatı');
+      }
+      
       console.log("Blockchain bilgisi alındı:", data);
       
       setBlockchainInfo(data);
-      setBlockchainInfoLoading(false);
     } catch (error) {
       console.error("Blockchain bilgisi alınamadı:", error);
+      setBlockchainInfoError(error.message || 'Blockchain bilgisi alınamadı');
+    } finally {
       setBlockchainInfoLoading(false);
     }
   };
@@ -77,6 +111,12 @@ const DashboardScreen = () => {
   const handleMineTransactions = async () => {
     try {
       setMiningLoading(true);
+      setMiningError('');
+      
+      // Kullanıcı kontrolü
+      if (!userInfo || !userInfo.token || !userInfo.walletAddress) {
+        throw new Error('Kullanıcı bilgileri eksik');
+      }
       
       const config = {
         headers: {
@@ -91,9 +131,7 @@ const DashboardScreen = () => {
       );
       
       // Başarılı madencilik sonrası verileri yenile
-      dispatch(getWalletBalance());
-      dispatch(getTransactions());
-      fetchBlockchainInfo();
+      loadDashboardData();
       
       // Başarı mesajını göster
       setMiningSuccess('Madencilik başarılı! Yeni blok oluşturuldu.');
@@ -104,7 +142,7 @@ const DashboardScreen = () => {
       }, 3000);
     } catch (error) {
       console.error('Madencilik hatası:', error);
-      setMiningError('Madencilik işlemi sırasında bir hata oluştu.');
+      setMiningError(error.response?.data?.message || 'Madencilik işlemi sırasında bir hata oluştu.');
       
       // 3 saniye sonra hata mesajını temizle
       setTimeout(() => {
@@ -130,15 +168,25 @@ const DashboardScreen = () => {
       }, 3000);
 
       // Verileri yenile
-      dispatch(getWalletBalance());
-      dispatch(getTransactions());
-      fetchBlockchainInfo();
+      loadDashboardData();
     }
   }, [createSuccess, dispatch]);
 
   // Ödeme oluşturma
   const handleCreateTransaction = (e) => {
     e.preventDefault();
+    
+    // Güvenlik kontrolü
+    if (!toAddress || !amount || !privateKey) {
+      return; // Form doğrulama tarayıcı tarafından yapılır
+    }
+    
+    // Kendi adresime transfer engelleme
+    if (toAddress === userInfo.walletAddress) {
+      alert('Kendinize transfer yapamazsınız!');
+      return;
+    }
+    
     dispatch(createTransaction({ 
       toAddress, 
       amount: parseFloat(amount), 
@@ -163,6 +211,13 @@ const DashboardScreen = () => {
       
       {miningSuccess && <Alert variant="success">{miningSuccess}</Alert>}
       {miningError && <Alert variant="danger">{miningError}</Alert>}
+      
+      {refreshingData && (
+        <Alert variant="info">
+          <Spinner animation="border" size="sm" className="me-2" />
+          Veriler yenileniyor...
+        </Alert>
+      )}
 
       <Row>
         {/* Sol Panel - Cüzdan Bilgileri */}
@@ -173,7 +228,17 @@ const DashboardScreen = () => {
             <Message variant="danger">{walletError}</Message>
           ) : (
             <Card className="mb-4">
-              <Card.Header as="h5">Cüzdan Bilgileri</Card.Header>
+              <Card.Header as="h5" className="d-flex justify-content-between align-items-center">
+                <span>Cüzdan Bilgileri</span>
+                <Button 
+                  variant="outline-primary"
+                  size="sm"
+                  onClick={handleRefreshData}
+                  disabled={refreshingData}
+                >
+                  <i className="fas fa-sync-alt"></i>
+                </Button>
+              </Card.Header>
               <Card.Body>
                 <div className="mb-3">
                   <small className="text-muted">Adres:</small>
@@ -218,7 +283,21 @@ const DashboardScreen = () => {
                   onClick={handleMineTransactions}
                   disabled={miningLoading}
                 >
-                  {miningLoading ? 'Madencilik Yapılıyor...' : 'Madencilik Yap'}
+                  {miningLoading ? (
+                    <>
+                      <Spinner
+                        as="span"
+                        animation="border"
+                        size="sm"
+                        role="status"
+                        aria-hidden="true"
+                        className="me-2"
+                      />
+                      Madencilik Yapılıyor...
+                    </>
+                  ) : (
+                    'Madencilik Yap'
+                  )}
                 </Button>
                 <Button variant="outline-primary" as={Link} to="/transactions">
                   Tüm İşlemleri Gör
@@ -233,6 +312,8 @@ const DashboardScreen = () => {
             <Card.Body>
               {blockchainInfoLoading ? (
                 <Loader />
+              ) : blockchainInfoError ? (
+                <Message variant="danger">{blockchainInfoError}</Message>
               ) : blockchainInfo ? (
                 <>
                   <p><strong>Zincir Uzunluğu:</strong> {blockchainInfo.chainLength || 0} blok</p>
@@ -312,7 +393,21 @@ const DashboardScreen = () => {
 
                   <div className="d-grid">
                     <Button type="submit" variant="primary" disabled={createLoading}>
-                      {createLoading ? 'İşleniyor...' : 'Ödeme Gönder'}
+                      {createLoading ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          İşleniyor...
+                        </>
+                      ) : (
+                        'Ödeme Gönder'
+                      )}
                     </Button>
                   </div>
                 </Form>
@@ -320,24 +415,45 @@ const DashboardScreen = () => {
             </Card>
           ) : (
             <Card>
-              <Card.Header as="h5">
+              <Card.Header as="h5" className="d-flex justify-content-between align-items-center">
                 Son İşlemler
-                <Button
-                  variant="link"
-                  className="float-end"
-                  as={Link}
-                  to="/transactions"
-                >
-                  Tümünü Gör
-                </Button>
+                <div>
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    className="me-2"
+                    onClick={handleRefreshData}
+                    disabled={transactionsLoading}
+                  >
+                    <i className="fas fa-sync-alt me-1"></i>
+                    Yenile
+                  </Button>
+                  <Button
+                    variant="link"
+                    as={Link}
+                    to="/transactions"
+                  >
+                    Tümünü Gör
+                  </Button>
+                </div>
               </Card.Header>
               <Card.Body>
                 {transactionsLoading ? (
                   <Loader />
                 ) : transactionsError ? (
                   <Message variant="danger">{transactionsError}</Message>
-                ) : transactions.length === 0 ? (
-                  <Message variant="info">Henüz bir işlem yapılmamış.</Message>
+                ) : !transactions || transactions.length === 0 ? (
+                  <div className="text-center">
+                    <Message variant="info">Henüz işlem bulunamadı.</Message>
+                    <Button 
+                      variant="primary" 
+                      className="mt-3"
+                      onClick={() => dispatch(getTransactions())}
+                    >
+                      <i className="fas fa-sync-alt me-2"></i>
+                      Yeniden Yükle
+                    </Button>
+                  </div>
                 ) : (
                   <div className="table-responsive">
                     <Table className="table table-striped table-hover">
@@ -351,6 +467,7 @@ const DashboardScreen = () => {
                         </tr>
                       </thead>
                       <tbody>
+                        {/* Tüm işlemleri göster, filtreleme yok */}
                         {transactions.slice(0, 5).map((tx) => (
                           <tr key={tx._id || `tx-${Math.random()}`}>
                             <td>{tx._id ? tx._id.substring(0, 8) + '...' : 'N/A'}</td>
@@ -378,6 +495,18 @@ const DashboardScreen = () => {
                         ))}
                       </tbody>
                     </Table>
+                    <div className="text-center mt-3">
+                      {transactions.length > 5 && (
+                        <Button 
+                          variant="outline-primary" 
+                          size="sm"
+                          as={Link}
+                          to="/transactions"
+                        >
+                          Tüm İşlemleri Görüntüle ({transactions.length})
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </Card.Body>

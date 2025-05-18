@@ -1,3 +1,4 @@
+// frontend/src/components/Header.js
 import React from 'react';
 import { Navbar, Nav, Container, NavDropdown } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
@@ -9,9 +10,21 @@ const Header = () => {
   const { userInfo } = useSelector((state) => state.auth);
   const navigate = useNavigate();
 
+  // Geliştirilmiş çıkış işleyicisi
   const logoutHandler = () => {
-    dispatch(logout());
-    navigate('/login');
+    try {
+      // Tüm state'i temizleyen çıkış fonksiyonunu çağır
+      dispatch(logout());
+      // Logout işleminden sonra ana sayfaya yönlendir
+      navigate('/');
+      
+      // Sayfayı yenileme seçeneği (çok gerekli olursa)
+      // window.location.href = '/';
+    } catch (error) {
+      console.error('Çıkış yapılırken hata oluştu:', error);
+      // Hataya rağmen kullanıcıyı giriş sayfasına yönlendir
+      navigate('/login');
+    }
   };
 
   return (
@@ -30,10 +43,20 @@ const Header = () => {
                   <Nav.Link as={Link} to="/transactions">
                     <i className="fas fa-exchange-alt"></i> İşlemler
                   </Nav.Link>
-                  <NavDropdown title={userInfo.username} id="username">
-                    <NavDropdown.Item as={Link} to="/profile">Profil</NavDropdown.Item>
+                  <NavDropdown 
+                    title={
+                      <>
+                        <i className="fas fa-user"></i> {userInfo.username || userInfo.name}
+                      </>
+                    } 
+                    id="username"
+                  >
+                    <NavDropdown.Item as={Link} to="/profile">
+                      <i className="fas fa-id-card"></i> Profil
+                    </NavDropdown.Item>
+                    <NavDropdown.Divider />
                     <NavDropdown.Item onClick={logoutHandler}>
-                      Çıkış Yap
+                      <i className="fas fa-sign-out-alt"></i> Çıkış Yap
                     </NavDropdown.Item>
                   </NavDropdown>
                 </>

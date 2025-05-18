@@ -1,3 +1,4 @@
+// frontend/src/redux/slices/transactionSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
@@ -25,6 +26,10 @@ export const getAllTransactions = createAsyncThunk(
     try {
       const { auth } = getState();
 
+      if (!auth.userInfo || !auth.userInfo.token) {
+        return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
+
       const config = {
         headers: {
           Authorization: `Bearer ${auth.userInfo.token}`,
@@ -36,7 +41,19 @@ export const getAllTransactions = createAsyncThunk(
         config
       );
 
-      return data;
+      // Veri güvenlik kontrolü - backend'den dönen verilerin geçerli olduğundan emin ol
+      if (!Array.isArray(data)) {
+        console.error('Geçersiz işlem verisi alındı:', data);
+        return rejectWithValue('İşlem verileri geçersiz format');
+      }
+
+      // Şu anki kullanıcıya ait işlemleri filtrele
+      const userWalletAddress = auth.userInfo.walletAddress;
+      const filteredTransactions = data.filter(tx => 
+        tx.from === userWalletAddress || tx.to === userWalletAddress
+      );
+
+      return filteredTransactions;
     } catch (error) {
       return rejectWithValue(
         error.response && error.response.data.message
@@ -54,6 +71,10 @@ export const getTransactions = createAsyncThunk(
     try {
       const { auth } = getState();
 
+      if (!auth.userInfo || !auth.userInfo.token) {
+        return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
+
       const config = {
         headers: {
           Authorization: `Bearer ${auth.userInfo.token}`,
@@ -65,7 +86,19 @@ export const getTransactions = createAsyncThunk(
         config
       );
 
-      return data;
+      // Veri güvenlik kontrolü
+      if (!Array.isArray(data)) {
+        console.error('Geçersiz işlem verisi alındı:', data);
+        return rejectWithValue('İşlem verileri geçersiz format');
+      }
+
+      // Şu anki kullanıcıya ait işlemleri filtrele (ekstra güvenlik)
+      const userWalletAddress = auth.userInfo.walletAddress;
+      const filteredTransactions = data.filter(tx => 
+        tx.from === userWalletAddress || tx.to === userWalletAddress
+      );
+
+      return filteredTransactions;
     } catch (error) {
       return rejectWithValue(
         error.response && error.response.data.message
@@ -83,6 +116,10 @@ export const getTransactionById = createAsyncThunk(
     try {
       const { auth } = getState();
 
+      if (!auth.userInfo || !auth.userInfo.token) {
+        return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
+
       const config = {
         headers: {
           Authorization: `Bearer ${auth.userInfo.token}`,
@@ -93,6 +130,13 @@ export const getTransactionById = createAsyncThunk(
         `http://localhost:5000/api/transactions/${id}`,
         config
       );
+
+      // Veri güvenlik kontrolü - bu işlem gerçekten kullanıcıya ait mi?
+      const userWalletAddress = auth.userInfo.walletAddress;
+      if (data.from !== userWalletAddress && data.to !== userWalletAddress) {
+        console.error('Yetkilendirme hatası: İşlem bu kullanıcıya ait değil');
+        return rejectWithValue('Bu işlemi görüntüleme yetkiniz yok');
+      }
 
       return data;
     } catch (error) {
@@ -111,6 +155,10 @@ export const createTransaction = createAsyncThunk(
   async (transactionData, { getState, rejectWithValue }) => {
     try {
       const { auth } = getState();
+
+      if (!auth.userInfo || !auth.userInfo.token) {
+        return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
 
       const config = {
         headers: {
@@ -143,6 +191,10 @@ export const processTransaction = createAsyncThunk(
     try {
       const { auth } = getState();
 
+      if (!auth.userInfo || !auth.userInfo.token) {
+        return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
+
       const config = {
         headers: {
           'Content-Type': 'application/json',
@@ -171,12 +223,7 @@ const transactionSlice = createSlice({
   name: 'transactions',
   initialState,
   reducers: {
-    resetTransactionState: (state) => {
-      state.isLoading = false;
-      state.isSuccess = false;
-      state.isError = false;
-      state.errorMessage = '';
-    },
+    resetTransactionState: () => initialState,
     clearTransaction: (state) => {
       state.transaction = null;
     },
@@ -190,6 +237,7 @@ const transactionSlice = createSlice({
       .addCase(getAllTransactions.pending, (state) => {
         state.loading = true;
         state.isLoading = true;
+        state.error = null;
       })
       .addCase(getAllTransactions.fulfilled, (state, action) => {
         state.loading = false;
@@ -208,6 +256,7 @@ const transactionSlice = createSlice({
       .addCase(getTransactions.pending, (state) => {
         state.loading = true;
         state.isLoading = true;
+        state.error = null;
       })
       .addCase(getTransactions.fulfilled, (state, action) => {
         state.loading = false;
@@ -225,6 +274,7 @@ const transactionSlice = createSlice({
       // Get Transaction By Id
       .addCase(getTransactionById.pending, (state) => {
         state.loading = true;
+        state.error = null;
       })
       .addCase(getTransactionById.fulfilled, (state, action) => {
         state.loading = false;
@@ -240,6 +290,7 @@ const transactionSlice = createSlice({
       // Create Transaction
       .addCase(createTransaction.pending, (state) => {
         state.createLoading = true;
+        state.createError = null;
       })
       .addCase(createTransaction.fulfilled, (state, action) => {
         state.createLoading = false;
@@ -255,6 +306,7 @@ const transactionSlice = createSlice({
       // Process Transaction
       .addCase(processTransaction.pending, (state) => {
         state.processLoading = true;
+        state.processError = null;
       })
       .addCase(processTransaction.fulfilled, (state, action) => {
         state.processLoading = false;

@@ -1,101 +1,144 @@
+// frontend/src/App.js (ApiTester ve TransactionDebugger olmadan)
 import React, { useEffect } from 'react';
-import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Container } from 'react-bootstrap';
-import { Provider } from 'react-redux';
-import { store } from './redux/store';
-import { initWeb3 } from './services/web3Service';
-import FundWalletScreen from './screens/FundWalletScreen';
+import { useDispatch, useSelector } from 'react-redux';
+import { logout } from './redux/slices/authSlice';
+
 // Components
 import Header from './components/Header';
+import Footer from './components/Footer';
 
 // Screens
 import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
+import ProfileScreen from './screens/ProfileScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import TransactionsScreen from './screens/TransactionsScreen';
-import ProfileScreen from './screens/ProfileScreen';
+import FundWalletScreen from './screens/FundWalletScreen';
 import NotFoundScreen from './screens/NotFoundScreen';
 
-// Ana Layout bileşeni
-const Layout = () => (
-  <>
-    <Header />
-    <main className="py-3">
-      <Container>
-        <Outlet />
-      </Container>
-    </main>
-    <footer className="text-center py-3">
-      <Container>
-        <p>&copy; {new Date().getFullYear()} Blockchain Mikro Ödeme Sistemi</p>
-      </Container>
-    </footer>
-  </>
-);
+// Yardımcı fonksiyonlar - bu dosyayı oluşturduysanız, açın; aksi takdirde yorum satırına alın
+// import { validateToken } from './utils/tokenHelper';
 
-// Router yapılandırması
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <Layout />,
-    children: [
-      {
-        path: '/',
-        element: <HomeScreen />,
-      },
-      {
-        path: '/login',
-        element: <LoginScreen />,
-      },
-      {
-        path: '/register',
-        element: <RegisterScreen />,
-      },
-      {
-        path: '/dashboard',
-        element: <DashboardScreen />,
-      },
-      {
-        path: '/transactions',
-        element: <TransactionsScreen />,
-      },
-      {
-        path: '/fund-wallet',
-        element: <FundWalletScreen />,
-      },
-      {
-        path: '/profile',
-        element: <ProfileScreen />,
-      },
-      {
-        path: '*',
-        element: <NotFoundScreen />,
-      },
-    ],
-  },
-]);
+// Korumalı Route Bileşeni
+const ProtectedRoute = ({ children }) => {
+  const { userInfo } = useSelector((state) => state.auth);
+  
+  if (!userInfo) {
+    // Kullanıcı giriş yapmamışsa login sayfasına yönlendir
+    return <Navigate to="/login" replace />;
+  }
+  
+  return children;
+};
 
-function App() {
+// Giriş Yapmış Kullanıcı Route Bileşeni (login ve register sayfalarına erişimi engeller)
+const AuthenticatedRoute = ({ children }) => {
+  const { userInfo } = useSelector((state) => state.auth);
+  
+  if (userInfo) {
+    // Kullanıcı zaten giriş yapmışsa dashboard'a yönlendir
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return children;
+};
+
+const App = () => {
+  const dispatch = useDispatch();
+  const { userInfo } = useSelector((state) => state.auth);
+
+  // Uygulama başlatıldığında token geçerliliğini kontrol et
   useEffect(() => {
-    // Web3 başlatma
-    const initializeWeb3 = async () => {
-      const success = await initWeb3();
-      if (success) {
-        console.log('Web3 başarıyla başlatıldı');
-      } else {
-        console.error('Web3 başlatılamadı');
+    const checkSession = () => {
+      try {
+        if (!userInfo || !userInfo.token) return;
+
+        // Token geçerli mi kontrol et - validateToken fonksiyonu yoksa bu kısmı yorum satırına alın
+        // if (!validateToken(userInfo.token)) {
+        //   console.log('Geçersiz token tespit edildi. Çıkış yapılıyor...');
+        //   dispatch(logout());
+        // }
+      } catch (error) {
+        console.error('Oturum kontrolü sırasında hata:', error);
+        dispatch(logout());
       }
     };
 
-    initializeWeb3();
-  }, []);
+    checkSession();
+  }, [dispatch, userInfo]);
 
   return (
-    <Provider store={store}>
-      <RouterProvider router={router} />
-    </Provider>
+    <Router>
+      <Header />
+      <main className="py-3">
+        <Container>
+          <Routes>
+            {/* Genel Sayfalar */}
+            <Route path="/" element={<HomeScreen />} />
+            
+            {/* Giriş Yapılmış Kullanıcılar İçin Engellenen Sayfalar */}
+            <Route 
+              path="/login" 
+              element={
+                <AuthenticatedRoute>
+                  <LoginScreen />
+                </AuthenticatedRoute>
+              } 
+            />
+            <Route 
+              path="/register" 
+              element={
+                <AuthenticatedRoute>
+                  <RegisterScreen />
+                </AuthenticatedRoute>
+              } 
+            />
+            
+            {/* Korumalı Sayfalar - Giriş Gerektiren */}
+            <Route 
+              path="/profile" 
+              element={
+                <ProtectedRoute>
+                  <ProfileScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <DashboardScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/transactions" 
+              element={
+                <ProtectedRoute>
+                  <TransactionsScreen />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/fund-wallet" 
+              element={
+                <ProtectedRoute>
+                  <FundWalletScreen />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* 404 Sayfası */}
+            <Route path="*" element={<NotFoundScreen />} />
+          </Routes>
+        </Container>
+      </main>
+      <Footer />
+    </Router>
   );
-}
+};
 
 export default App;

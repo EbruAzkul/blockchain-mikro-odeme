@@ -4,6 +4,16 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/api/wallet';
 
+const initialState = {
+  balance: '0',
+  loading: false,
+  error: null,
+  success: false,
+  addFundsLoading: false,
+  addFundsError: null,
+  addFundsSuccess: false,
+};
+
 // Cüzdan bakiyesini getir
 export const getWalletBalance = createAsyncThunk(
   'wallet/getBalance',
@@ -30,6 +40,12 @@ export const getWalletBalance = createAsyncThunk(
       const { data } = await axios.get(`${API_URL}/balance`, config);
       console.log('Bakiye yanıtı:', data);
       
+      // Eğer dönen veri beklenen kullanıcıya ait değilse hata fırlat
+      if (data && data.userId && data.userId !== userInfo._id) {
+        console.error('Veri tutarsızlığı: Bakiye bilgisi farklı kullanıcıya ait');
+        return rejectWithValue('Veri tutarsızlığı tespit edildi');
+      }
+      
       return data.balance;
     } catch (error) {
       console.error('Bakiye alma hatası:', error.response || error.message);
@@ -37,8 +53,7 @@ export const getWalletBalance = createAsyncThunk(
       // Token hatası kontrolü
       if (error.response && error.response.status === 401) {
         console.log('401 Yetkilendirme hatası tespit edildi');
-        // Token hatası varsa auth hata yakalayıcıyı çağır
-        // Not: Bu kısmı kullanmak için, authSlice.js'den handleAuthError'u import etmelisiniz
+        // İlgili import yapıldığında aktif et
         // dispatch(handleAuthError());
       }
       
@@ -88,7 +103,7 @@ export const addFunds = createAsyncThunk(
       // Token hatası kontrolü
       if (error.response && error.response.status === 401) {
         console.log('401 Yetkilendirme hatası tespit edildi');
-        // Token hatası varsa auth hata yakalayıcıyı çağır
+        // İlgili import yapıldığında aktif et
         // dispatch(handleAuthError());
       }
       
@@ -104,15 +119,7 @@ export const addFunds = createAsyncThunk(
 // Wallet slice
 export const walletSlice = createSlice({
   name: 'wallet',
-  initialState: {
-    balance: '0',
-    loading: false,
-    error: null,
-    success: false,
-    addFundsLoading: false,
-    addFundsError: null,
-    addFundsSuccess: false,
-  },
+  initialState,
   reducers: {
     clearWalletError: (state) => {
       state.error = null;
@@ -120,7 +127,8 @@ export const walletSlice = createSlice({
     },
     resetAddFundsSuccess: (state) => {
       state.addFundsSuccess = false;
-    }
+    },
+    resetWalletState: () => initialState
   },
   extraReducers: (builder) => {
     builder
@@ -157,5 +165,5 @@ export const walletSlice = createSlice({
   },
 });
 
-export const { clearWalletError, resetAddFundsSuccess } = walletSlice.actions;
+export const { clearWalletError, resetAddFundsSuccess, resetWalletState } = walletSlice.actions;
 export default walletSlice.reducer;

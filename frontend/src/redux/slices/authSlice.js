@@ -156,23 +156,31 @@ export const handleAuthError = createAsyncThunk(
   }
 );
 
-// Çıkış yap
-export const logout = createAsyncThunk('auth/logout', async () => {
-  console.log('Logout işlemi başlatıldı');
-  localStorage.removeItem('userInfo');
-  console.log('LocalStorage temizlendi');
-  return null;
-});
+// Çıkış yap - GÜNCELLENDI
+export const logout = createAsyncThunk(
+  'auth/logout', 
+  async (_, { dispatch }) => {
+    console.log('Logout işlemi başlatıldı');
+    
+    // Tüm ilgili localStorage öğelerini temizle
+    localStorage.removeItem('userInfo');
+    sessionStorage.clear();
+    
+    // Diğer state'leri sıfırlama
+    dispatch({ type: 'wallet/resetWalletState' });
+    dispatch({ type: 'transactions/resetTransactionState' });
+    
+    console.log('Tüm oturum verileri temizlendi');
+    return null;
+  }
+);
 
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
     resetAuthState: (state) => {
-      state.isLoading = false;
-      state.isSuccess = false;
-      state.isError = false;
-      state.errorMessage = '';
+      return initialState;
     },
   },
   extraReducers: (builder) => {
@@ -180,48 +188,59 @@ const authSlice = createSlice({
       // Register
       .addCase(register.pending, (state) => {
         state.isLoading = true;
+        state.isError = false;
+        state.errorMessage = '';
       })
       .addCase(register.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
+        state.isError = false;
         state.userInfo = action.payload;
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
+        state.isSuccess = false;
         state.isError = true;
         state.errorMessage = action.payload;
       })
       // Login
       .addCase(login.pending, (state) => {
         state.isLoading = true;
+        state.isError = false;
+        state.errorMessage = '';
       })
       .addCase(login.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
+        state.isError = false;
         state.userInfo = action.payload;
       })
       .addCase(login.rejected, (state, action) => {
         state.isLoading = false;
+        state.isSuccess = false;
         state.isError = true;
         state.errorMessage = action.payload;
       })
       // Update Profile
       .addCase(updateProfile.pending, (state) => {
         state.isLoading = true;
+        state.isError = false;
       })
       .addCase(updateProfile.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
+        state.isError = false;
         state.userInfo = action.payload;
       })
       .addCase(updateProfile.rejected, (state, action) => {
         state.isLoading = false;
+        state.isSuccess = false;
         state.isError = true;
         state.errorMessage = action.payload;
       })
-      // Logout
+      // Logout - GÜNCELLENDI
       .addCase(logout.fulfilled, (state) => {
-        state.userInfo = null;
+        return initialState;
       });
   },
 });
