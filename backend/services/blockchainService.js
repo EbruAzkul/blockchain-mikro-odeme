@@ -1,135 +1,293 @@
-// C:\Users\HUAWEI\blockchain-mikro-odeme\backend\services\blockchainService.js
-
+// backend/services/blockchainService.js
 const Blockchain = require('../blockchain/Blockchain');
 const Transaction = require('../blockchain/Transaction');
 const Wallet = require('../blockchain/Wallet');
-const SmartContract = require('../blockchain/SmartContract');
-const BlockModel = require('../models/BlockModel');
-const TransactionModel = require('../models/TransactionModel');
 
+// Singleton blockchain instance
+let blockchain = null;
+
+/**
+ * Blockchain Service
+ * Blockchain ile etkileşim için kullanılan servis
+ */
 class BlockchainService {
   constructor() {
-    this.blockchain = new Blockchain();
-    this.wallet = new Wallet();
-    this.smartContract = new SmartContract(this.blockchain);
-    this.initialize();
+    this.initializeBlockchain();
   }
 
-  async initialize() {
-    await this.blockchain.initializeChain();
-    console.log('Blockchain initialized');
+  /**
+   * Blockchain'i başlat
+   */
+  async initializeBlockchain() {
+    try {
+      if (!blockchain) {
+        console.log('Blockchain başlatılıyor...');
+        blockchain = new Blockchain();
+        await blockchain.initializeChain();
+        console.log('Blockchain başarıyla başlatıldı');
+      }
+    } catch (error) {
+      console.error('Blockchain başlatma hatası:', error);
+      throw error;
+    }
   }
 
+  /**
+   * Blockchain instance'ını döndür
+   */
+  get blockchain() {
+    return blockchain;
+  }
+
+  /**
+   * Blockchain'i döndür
+   * @returns {Array} Blockchain zinciri
+   */
+  getBlockchain() {
+    return blockchain.chain;
+  }
+  
+  /**
+   * Blockchain zincirinin geçerliliğini kontrol et
+   * @returns {boolean} Zincirin geçerli olup olmadığı
+   */
+  isChainValid() {
+    return blockchain.isChainValid();
+  }
+
+  /**
+   * Tüm işlemleri getir
+   * @returns {Array} Tüm işlemler
+   */
+  getAllTransactions() {
+    return blockchain.getAllTransactions();
+  }
+
+  /**
+   * Yeni bir cüzdan oluştur
+   * @returns {Object} Oluşturulan cüzdan
+   */
   createWallet() {
-    return this.wallet.generateKeyPair();
+    const wallet = new Wallet();
+    const keyPair = wallet.generateKeyPair();
+    return keyPair;
   }
 
-  loadWallet(privateKey) {
-    return this.wallet.getKeyPairFromPrivateKey(privateKey);
+  /**
+   * Sadece tamamlanmış işlemlerden bakiye hesapla
+   * @param {string} address - Bakiyesi hesaplanacak cüzdan adresi
+   * @param {boolean} onlyCompleted - Sadece tamamlanmış işlemleri dahil et
+   * @returns {number} Bakiye
+   */
+  getBalance(address, onlyCompleted = true) {
+    let balance = 0;
+    
+    // Tüm bloklardaki işlemleri hesapla (bunlar zaten tamamlanmış)
+    for (const block of this.blockchain.chain) {
+      for (const trans of block.transactions) {
+        if (trans.fromAddress === address) {
+          balance -= parseFloat(trans.amount);
+        }
+        if (trans.toAddress === address) {
+          balance += parseFloat(trans.amount);
+        }
+      }
+    }
+    
+    // Eğer sadece tamamlanmış istenmiyorsa, bekleyenleri de ekle
+    if (!onlyCompleted) {
+      const pendingBalance = this.getPendingBalance(address);
+      balance += pendingBalance;
+    }
+    
+    return balance;
   }
 
+  /**
+   * Sadece bekleyen işlemlerden bakiye hesapla
+   * @param {string} address - Bakiyesi hesaplanacak cüzdan adresi
+   * @returns {number} Bekleyen işlemlerden oluşan bakiye
+   */
+  getPendingBalance(address) {
+    let pendingBalance = 0;
+    
+    // Bekleyen işlemleri hesapla
+    for (const trans of this.blockchain.pendingTransactions) {
+      if (trans.fromAddress === address) {
+        pendingBalance -= parseFloat(trans.amount);
+      }
+      if (trans.toAddress === address) {
+        pendingBalance += parseFloat(trans.amount);
+      }
+    }
+    
+    return pendingBalance;
+  }
+
+  /**
+   * İşlem oluştur
+   * @param {string} fromAddress - Gönderen adres
+   * @param {string} toAddress - Alıcı adres
+   * @param {number} amount - Miktar
+   * @param {string} description - Açıklama
+   * @param {string} privateKey - Özel anahtar
+   * @returns {Transaction} Oluşturulan işlem
+   */
   async createTransaction(fromAddress, toAddress, amount, description, privateKey) {
     try {
-      // Cüzdanı yükle
+      // Wallet oluştur ve özel anahtardan key pair elde et
       const wallet = new Wallet();
-      wallet.getKeyPairFromPrivateKey(privateKey);
+      const keyPair = wallet.getKeyPairFromPrivateKey(privateKey);
+      
+      // Bakiye kontrolü - sadece tamamlanmış işlemlerle
+      const currentBalance = this.getBalance(fromAddress, true);
+      
+      // Bakiye kontrolü
+      if (currentBalance < amount) {
+        throw new Error(`Yetersiz bakiye. Mevcut: ${currentBalance}, İstenen: ${amount}`);
+      }
       
       // İşlemi oluştur
-      const transaction = new Transaction(fromAddress, toAddress, amount, description);
-      
-      // İşlemi imzala
-      wallet.signTransaction(transaction);
-      
-      // İşlemi blockchain'e ekle
-      await this.blockchain.addTransaction(transaction);
-      
-      return transaction;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async mineBlock(minerAddress) {
-    try {
-      const block = await this.blockchain.minePendingTransactions(minerAddress);
-      return block;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  getBalance(address) {
-    return this.blockchain.getBalance(address);
-  }
-
-  getBlockchain() {
-    return this.blockchain.chain;
-  }
-
-  getAllTransactions() {
-    return this.blockchain.getAllTransactions();
-  }
-
-  getTransactionsByAddress(address) {
-    const allTransactions = this.blockchain.getAllTransactions();
-    return allTransactions.filter(tx => 
-      tx.fromAddress === address || tx.toAddress === address
-    );
-  }
-
-  isChainValid() {
-    return this.blockchain.isChainValid();
-  }
-
-  async deploySmartContract(ownerAddress) {
-    return this.smartContract.deploy(ownerAddress);
-  }
-
-  async createEscrow(fromAddress, toAddress, amount, releaseTime, privateKey) {
-    return this.smartContract.createEscrow(
-      fromAddress, toAddress, amount, releaseTime, privateKey
-    );
-  }
-
-  async releaseEscrow(escrowId, callerAddress) {
-    return this.smartContract.releaseEscrow(escrowId, callerAddress);
-  }
-  
-  // Bakiye yükleme işlemi metodu
-  async addFunds(userAddress, amount, privateKey) {
-    try {
-      // Sistem cüzdanından kullanıcıya transfer
-      const systemAddress = "SYSTEM_TREASURY_ADDRESS"; // Sistem hazine adresi
-      
       const transaction = new Transaction(
-        systemAddress,
-        userAddress,
-        parseFloat(amount),
-        "Bakiye Yükleme"
+        fromAddress,
+        toAddress,
+        amount,
+        description
       );
       
-      // Sistem işlemi olduğu için özel bir imzalama yöntemi kullanılabilir
-      transaction.signature = "SYSTEM_TRANSACTION_" + Date.now();
+      // İşlemi imzala
+      wallet.keyPair = keyPair;
+      wallet.signTransaction(transaction);
       
-      // İşlemi blockchain'e ekle
+      // Blockchain'e ekle
       await this.blockchain.addTransaction(transaction);
       
-      // İşlemi hemen işle (isteğe bağlı)
-      await this.mineBlock(systemAddress);
+      console.log(`İşlem oluşturuldu: ${fromAddress} -> ${toAddress}, ${amount} mikrocoin`);
       
       return transaction;
     } catch (error) {
+      console.error('İşlem oluşturma hatası:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bakiye yükle
+   * @param {string} toAddress - Alıcı adres
+   * @param {number} amount - Miktar
+   * @param {string} privateKey - Özel anahtar
+   * @returns {Transaction} Oluşturulan işlem
+   */
+  async addFunds(toAddress, amount, privateKey) {
+    try {
+      // Bakiye yükleme işlemi, sistem kaynaklı bir işlemdir
+      const fromAddress = "SYSTEM_TREASURY_ADDRESS";
+      const description = "Bakiye Yükleme";
+      
+      // Özel anahtar kontrolü
+      const wallet = new Wallet();
+      const keyPair = wallet.getKeyPairFromPrivateKey(privateKey);
+      
+      // İşlemi oluştur
+      const transaction = new Transaction(
+        fromAddress,
+        toAddress,
+        amount,
+        description
+      );
+      
+      // Sistem işlemi olduğu için özel bir imzalama
+      transaction.signature = "SYSTEM_TRANSACTION";
+      
+      // Blockchain'e ekle
+      await this.blockchain.addTransaction(transaction);
+      
+      console.log(`Bakiye yüklendi: ${amount} mikrocoin -> ${toAddress}`);
+      
+      return transaction;
+    } catch (error) {
+      console.error('Bakiye yükleme hatası:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * İşlem işle/onayla
+   * @param {string} transactionId - İşlem ID'si
+   * @param {string} privateKey - Özel anahtar
+   * @returns {Transaction} İşlenen işlem
+   */
+  async processTransaction(transactionId, privateKey) {
+    try {
+      // Wallet oluştur ve özel anahtardan key pair elde et
+      const wallet = new Wallet();
+      const keyPair = wallet.getKeyPairFromPrivateKey(privateKey);
+      
+      // İşlemi bul
+      const transaction = this.blockchain.pendingTransactions.find(tx => 
+        tx.signature && tx.signature.substring(0, 24) === transactionId
+      );
+      
+      if (!transaction) {
+        throw new Error('İşlem bulunamadı veya zaten işlenmiş');
+      }
+      
+      // İmza kontrolü
+      if (transaction.fromAddress !== wallet.keyPair.getPublic('hex')) {
+        throw new Error('Bu işlemi onaylama yetkiniz bulunmamaktadır');
+      }
+      
+      // İşlemi madenciliğe ekle (blockchain implementasyonuna göre değişebilir)
+      // Bu örnekte, işlemi bir sonraki bloğa dahil etmek için sadece onaylıyoruz
+      // ve madencilik için bekletiyoruz
+      console.log(`İşlem onaylandı ve madencilik için hazır: ${transactionId}`);
+      
+      // Gerçek bir sistemde, burada bir madencilik tetikleyebilirsiniz
+      // veya işlemi "onaylandı" olarak işaretleyebilirsiniz
+      
+      return transaction;
+    } catch (error) {
+      console.error('İşlem onaylama hatası:', error);
       throw error;
     }
   }
   
-  // Mining ödül miktarını ayarla
-  setMiningReward(amount) {
-    this.blockchain.miningReward = amount;
-    return this.blockchain.miningReward;
+  /**
+   * Madencilik yap
+   * @param {string} minerAddress - Madenci adresi
+   * @returns {object} Oluşturulan blok
+   */
+  async mineBlock(minerAddress) {
+    try {
+      if (!minerAddress) {
+        throw new Error('Madenci adresi gereklidir');
+      }
+      
+      // Madencilik yap
+      const newBlock = await this.blockchain.minePendingTransactions(minerAddress);
+      
+      console.log(`Yeni blok oluşturuldu:`, {
+        index: newBlock.index,
+        hash: newBlock.hash.substring(0, 10) + '...',
+        transactions: newBlock.transactions.length
+      });
+      
+      return {
+        index: newBlock.index,
+        hash: newBlock.hash,
+        previousHash: newBlock.previousHash,
+        timestamp: newBlock.timestamp,
+        nonce: newBlock.nonce,
+        transactionCount: newBlock.transactions.length
+      };
+    } catch (error) {
+      console.error('Madencilik hatası:', error);
+      throw error;
+    }
   }
 }
 
-// Singleton pattern
+// Singleton instance oluştur
 const blockchainService = new BlockchainService();
+
 module.exports = blockchainService;

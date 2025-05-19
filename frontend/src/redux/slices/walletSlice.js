@@ -6,6 +6,7 @@ const API_URL = 'http://localhost:5000/api/wallet';
 
 const initialState = {
   balance: '0',
+  pendingAmount: '0', // Bekleyen işlemlerden oluşan bakiye
   loading: false,
   error: null,
   success: false,
@@ -14,7 +15,7 @@ const initialState = {
   addFundsSuccess: false,
 };
 
-// Cüzdan bakiyesini getir
+// Cüzdan bakiyesini getir - Sadece tamamlanmış işlemleri dahil et
 export const getWalletBalance = createAsyncThunk(
   'wallet/getBalance',
   async (_, { getState, rejectWithValue, dispatch }) => {
@@ -37,7 +38,9 @@ export const getWalletBalance = createAsyncThunk(
       };
 
       console.log('Bakiye isteği gönderiliyor, token:', userInfo.token);
-      const { data } = await axios.get(`${API_URL}/balance`, config);
+      
+      // Sadece tamamlanmış işlemleri dahil et (onlyCompleted=true)
+      const { data } = await axios.get(`${API_URL}/balance?onlyCompleted=true`, config);
       console.log('Bakiye yanıtı:', data);
       
       // Eğer dönen veri beklenen kullanıcıya ait değilse hata fırlat
@@ -46,7 +49,10 @@ export const getWalletBalance = createAsyncThunk(
         return rejectWithValue('Veri tutarsızlığı tespit edildi');
       }
       
-      return data.balance;
+      return {
+        balance: data.balance,
+        pendingAmount: data.pendingAmount || 0
+      };
     } catch (error) {
       console.error('Bakiye alma hatası:', error.response || error.message);
       
@@ -128,7 +134,13 @@ export const walletSlice = createSlice({
     resetAddFundsSuccess: (state) => {
       state.addFundsSuccess = false;
     },
-    resetWalletState: () => initialState
+    resetWalletState: () => initialState,
+    updateBalanceFromCompletedTransactions: (state, action) => {
+      // Manuel olarak bakiyeyi güncelleme - sadece tamamlanmış işlemler
+      if (action.payload && action.payload.completedAmount) {
+        state.balance = action.payload.completedAmount;
+      }
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -138,7 +150,8 @@ export const walletSlice = createSlice({
       })
       .addCase(getWalletBalance.fulfilled, (state, action) => {
         state.loading = false;
-        state.balance = action.payload;
+        state.balance = action.payload.balance;
+        state.pendingAmount = action.payload.pendingAmount;
         state.success = true;
       })
       .addCase(getWalletBalance.rejected, (state, action) => {
@@ -152,10 +165,18 @@ export const walletSlice = createSlice({
       })
       .addCase(addFunds.fulfilled, (state, action) => {
         state.addFundsLoading = false;
-        // Sadece işlem başarılıysa bakiyeyi güncelle
-        if (action.payload && action.payload.transaction) {
+        
+        // SADECE TAMAMLANMIŞ işlemleri bakiyeye yansıt
+        if (action.payload && action.payload.transaction && action.payload.transaction.status === 'COMPLETED') {
           state.balance = (parseFloat(state.balance) + parseFloat(action.payload.transaction.amount)).toString();
+        } else {
+          // İşlem beklemede, pendingAmount güncelle
+          if (action.payload && action.payload.transaction) {
+            state.pendingAmount = (parseFloat(state.pendingAmount) + parseFloat(action.payload.transaction.amount)).toString();
+          }
+          console.log('İşlem beklemede, bakiye güncellenmedi');
         }
+        
         state.addFundsSuccess = true;
       })
       .addCase(addFunds.rejected, (state, action) => {
@@ -165,5 +186,11 @@ export const walletSlice = createSlice({
   },
 });
 
-export const { clearWalletError, resetAddFundsSuccess, resetWalletState } = walletSlice.actions;
+export const { 
+  clearWalletError, 
+  resetAddFundsSuccess, 
+  resetWalletState, 
+  updateBalanceFromCompletedTransactions 
+} = walletSlice.actions;
+
 export default walletSlice.reducer;

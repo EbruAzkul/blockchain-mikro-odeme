@@ -1,14 +1,18 @@
-// frontend/src/screens/TransactionsScreen.js - Doğrudan API sonuçlarını görüntüleyen versiyon
+// frontend/src/screens/TransactionsScreen.js
 import React, { useEffect, useState } from 'react';
 import { Container, Card, Alert, Spinner, Table, Badge, Button, Form, Modal, Row, Col } from 'react-bootstrap';
 import { useSelector, useDispatch } from 'react-redux';
-import { getAllTransactions, processTransaction } from '../redux/slices/transactionSlice';
+import { useNavigate } from 'react-router-dom';
+import { getTransactions, processTransaction } from '../redux/slices/transactionSlice';
 import Loader from '../components/Loader';
 import Message from '../components/Message';
 import axios from 'axios';
+import TransactionList from '../components/TransactionList';
 
 const TransactionsScreen = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  
   const { transactions, loading, error, processLoading, processError, processSuccess } = useSelector(state => state.transactions);
   const { userInfo } = useSelector(state => state.auth);
   
@@ -21,52 +25,8 @@ const TransactionsScreen = () => {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL', 'SENT', 'RECEIVED'
   const [manualLoading, setManualLoading] = useState(false);
   const [debugMessage, setDebugMessage] = useState('');
-  const [apiResponse, setApiResponse] = useState(null);
-  const [rawData, setRawData] = useState(null);
   
-  // Doğrudan API'den veri alma fonksiyonu
-  const fetchTransactionsDirectly = async () => {
-    try {
-      setManualLoading(true);
-      setDebugMessage('API\'den veriler yükleniyor...');
-      
-      if (!userInfo || !userInfo.token) {
-        setDebugMessage('Kullanıcı bilgisi veya token bulunamadı');
-        return;
-      }
-      
-      const config = {
-        headers: {
-          Authorization: `Bearer ${userInfo.token}`,
-        },
-      };
-      
-      // API'den tüm işlemleri al
-      console.log('İşlemler API isteği gönderiliyor...');
-      const response = await axios.get('http://localhost:5000/api/transactions/all', config);
-      console.log('API yanıtı:', response);
-      
-      // Ham veriyi sakla (hata ayıklama için)
-      setRawData(response.data);
-      setApiResponse(response);
-      
-      if (response.data && Array.isArray(response.data)) {
-        setFilteredTransactions(response.data);
-        setDebugMessage(`${response.data.length} işlem başarıyla yüklendi`);
-      } else {
-        setFilteredTransactions([]);
-        setDebugMessage('API verisi alındı fakat işlem bulunamadı veya veri dizi değil');
-      }
-    } catch (error) {
-      console.error('İşlemler getirme hatası:', error);
-      setDebugMessage(`Hata: ${error.message || 'Bilinmeyen hata'}`);
-      setApiResponse(error.response || error);
-    } finally {
-      setManualLoading(false);
-    }
-  };
-  
-  // Kullanıcının işlemlerini getir
+  // Kullanıcının kendi işlemlerini getiren fonksiyon
   const fetchMyTransactions = async () => {
     try {
       setManualLoading(true);
@@ -83,18 +43,29 @@ const TransactionsScreen = () => {
         },
       };
       
-      // API'den kullanıcının işlemlerini al
+      // Doğrudan kullanıcının kendi işlemlerini al
       console.log('Kullanıcı işlemleri API isteği gönderiliyor...');
       const response = await axios.get('http://localhost:5000/api/transactions/my', config);
       console.log('API yanıtı (my transactions):', response);
       
-      // Ham veriyi sakla (hata ayıklama için)
-      setRawData(response.data);
-      setApiResponse(response);
-      
       if (response.data && Array.isArray(response.data)) {
-        setFilteredTransactions(response.data);
-        setDebugMessage(`${response.data.length} kullanıcı işlemi başarıyla yüklendi`);
+        // Filtreleme işlemleri
+        let userTransactions = [...response.data];
+        
+        // İşlem tipi filtresi uygula
+        if (filterType === 'SENT' && userInfo) {
+          userTransactions = userTransactions.filter(tx => tx.from === userInfo.walletAddress);
+        } else if (filterType === 'RECEIVED' && userInfo) {
+          userTransactions = userTransactions.filter(tx => tx.to === userInfo.walletAddress);
+        }
+        
+        // Durum filtresi uygula
+        if (filterStatus !== 'ALL') {
+          userTransactions = userTransactions.filter(tx => tx.status === filterStatus);
+        }
+        
+        setFilteredTransactions(userTransactions);
+        setDebugMessage(`${userTransactions.length} kullanıcı işlemi başarıyla yüklendi`);
       } else {
         setFilteredTransactions([]);
         setDebugMessage('API verisi alındı fakat işlem bulunamadı veya veri dizi değil');
@@ -102,16 +73,15 @@ const TransactionsScreen = () => {
     } catch (error) {
       console.error('Kullanıcı işlemleri getirme hatası:', error);
       setDebugMessage(`Hata: ${error.message || 'Bilinmeyen hata'}`);
-      setApiResponse(error.response || error);
     } finally {
       setManualLoading(false);
     }
   };
   
   useEffect(() => {
-    // Hem Redux ile hem de doğrudan API ile verileri yükle
-    dispatch(getAllTransactions());
-    fetchTransactionsDirectly();
+    // Sadece kullanıcının kendi işlemlerini yükle - tüm işlemleri değil
+    dispatch(getTransactions());
+    fetchMyTransactions();
   }, [dispatch]);
   
   // Redux state'inden veri alınırsa burası çalışacak
@@ -156,46 +126,37 @@ const TransactionsScreen = () => {
       }, 3000);
       
       // İşlemleri yeniden yükle
-      dispatch(getAllTransactions());
-      fetchTransactionsDirectly();
+      dispatch(getTransactions());
+      fetchMyTransactions();
     }
   }, [processSuccess, dispatch]);
+  
+  // Filtre değiştiğinde işlemleri filtrele
+  useEffect(() => {
+    if (transactions && transactions.length > 0) {
+      let filtered = [...transactions];
+      
+      // İşlem tipi filtresi
+      if (filterType === 'SENT' && userInfo) {
+        filtered = filtered.filter(tx => tx.from === userInfo.walletAddress);
+      } else if (filterType === 'RECEIVED' && userInfo) {
+        filtered = filtered.filter(tx => tx.to === userInfo.walletAddress);
+      }
+      
+      // Durum filtresi
+      if (filterStatus !== 'ALL') {
+        filtered = filtered.filter(tx => tx.status === filterStatus);
+      }
+      
+      setFilteredTransactions(filtered);
+    }
+  }, [filterStatus, filterType, transactions, userInfo]);
   
   // Verileri yeniden yükleme
   const handleRefresh = () => {
     setDebugMessage('Veriler yeniden yükleniyor...');
-    dispatch(getAllTransactions());
-    fetchTransactionsDirectly();
-  };
-  
-  // Backend API durum kontrolü
-  const checkApiStatus = async () => {
-    try {
-      setManualLoading(true);
-      setDebugMessage('API durumu kontrol ediliyor...');
-      
-      // API'nin durumunu kontrol et
-      const response = await axios.get('http://localhost:5000/api/health');
-      console.log('API durumu:', response);
-      
-      setApiResponse(response);
-      setDebugMessage(`API durumu: ${response.status === 200 ? 'Çalışıyor' : 'Hata'}`);
-    } catch (error) {
-      console.error('API durum kontrolü hatası:', error);
-      setApiResponse(error.response || error);
-      setDebugMessage(`API durum hatası: ${error.message || 'Bilinmeyen hata'}`);
-    } finally {
-      setManualLoading(false);
-    }
-  };
-  
-  // Tüm işlemleri doğrudan görüntüleme
-  const handleShowRawData = () => {
-    if (rawData) {
-      alert(JSON.stringify(rawData, null, 2));
-    } else {
-      alert('Henüz veri yüklenmedi.');
-    }
+    dispatch(getTransactions());
+    fetchMyTransactions();
   };
   
   // Open process modal
@@ -249,7 +210,7 @@ const TransactionsScreen = () => {
   
   return (
     <Container className="py-4">
-      <h1 className="mb-4">İşlem Geçmişi</h1>
+      <h1 className="mb-4">İşlem Geçmişim</h1>
       
       {error && <Alert variant="danger">{error}</Alert>}
       {successMessage && <Alert variant="success">{successMessage}</Alert>}
@@ -257,7 +218,7 @@ const TransactionsScreen = () => {
       
       <Card className="mb-4">
         <Card.Header as="h5" className="d-flex justify-content-between align-items-center">
-          <span>Veri Yükleme Seçenekleri</span>
+          <span>Filtreler</span>
           <div>
             <Button 
               variant="outline-primary" 
@@ -266,24 +227,7 @@ const TransactionsScreen = () => {
               disabled={loading || manualLoading}
               className="me-2"
             >
-              <i className="fas fa-sync-alt me-1"></i> Tüm İşlemleri Yükle
-            </Button>
-            <Button 
-              variant="outline-info" 
-              size="sm"
-              onClick={fetchMyTransactions}
-              disabled={manualLoading}
-              className="me-2"
-            >
-              <i className="fas fa-user me-1"></i> Kullanıcı İşlemlerini Yükle
-            </Button>
-            <Button 
-              variant="outline-secondary" 
-              size="sm"
-              onClick={checkApiStatus}
-              disabled={manualLoading}
-            >
-              <i className="fas fa-server me-1"></i> API Durumu
+              <i className="fas fa-sync-alt me-1"></i> İşlemlerimi Yenile
             </Button>
           </div>
         </Card.Header>
@@ -316,28 +260,11 @@ const TransactionsScreen = () => {
               </Form.Group>
             </Col>
           </Row>
-          
-          {apiResponse && (
-            <div className="mt-3">
-              <Alert variant="secondary">
-                <strong>API Yanıt Durumu:</strong> {apiResponse.status || 'Bilinmiyor'} 
-                <span className="ms-3">
-                  <Button 
-                    variant="link" 
-                    size="sm"
-                    onClick={handleShowRawData}
-                  >
-                    Ham Veriyi Göster
-                  </Button>
-                </span>
-              </Alert>
-            </div>
-          )}
         </Card.Body>
       </Card>
       
       <Card>
-        <Card.Header as="h5">Tüm İşlemler</Card.Header>
+        <Card.Header as="h5">İşlemlerim</Card.Header>
         <Card.Body>
           {(loading || manualLoading) ? (
             <div className="text-center py-3">
@@ -354,65 +281,15 @@ const TransactionsScreen = () => {
                 >
                   <i className="fas fa-sync-alt me-2"></i> Yeniden Dene
                 </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={handleShowRawData}
-                >
-                  <i className="fas fa-code me-2"></i> API Yanıtını Göster
-                </Button>
               </div>
             </div>
           ) : (
             <div className="table-responsive">
-              <Table striped hover>
-                <thead>
-                  <tr>
-                    <th>İşlem ID</th>
-                    <th>Tarih</th>
-                    <th>Gönderen</th>
-                    <th>Alıcı</th>
-                    <th>Miktar</th>
-                    <th>Açıklama</th>
-                    <th>Durum</th>
-                    <th>İşlemler</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTransactions.map((tx) => (
-                    <tr key={tx._id || `tx-${Math.random()}`}>
-                      <td>{tx._id ? tx._id.substring(0, 8) + '...' : 'N/A'}</td>
-                      <td>{formatDate(tx.timestamp)}</td>
-                      <td className={tx.from === userInfo?.walletAddress ? 'text-primary fw-bold' : ''}>
-                        {tx.from ? shortenAddress(tx.from) : 'Sistem'}
-                      </td>
-                      <td className={tx.to === userInfo?.walletAddress ? 'text-primary fw-bold' : ''}>
-                        {shortenAddress(tx.to)}
-                      </td>
-                      <td className="fw-bold">{tx.amount || 0} MikroCoin</td>
-                      <td>{tx.description || '-'}</td>
-                      <td>
-                        {tx.status === 'COMPLETED' ? (
-                          <Badge bg="success">Tamamlandı</Badge>
-                        ) : (
-                          <Badge bg="warning">Beklemede</Badge>
-                        )}
-                      </td>
-                      <td>
-                        {tx.status === 'PENDING' && tx.from === userInfo?.walletAddress && (
-                          <Button 
-                            size="sm" 
-                            variant="primary"
-                            onClick={() => handleProcessClick(tx)}
-                            disabled={processLoading}
-                          >
-                            {processLoading ? 'İşleniyor...' : 'İşle'}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
+              <TransactionList 
+                transactions={filteredTransactions}
+                showDetails={true}
+                onProcessClick={handleProcessClick}
+              />
             </div>
           )}
         </Card.Body>
@@ -431,7 +308,6 @@ const TransactionsScreen = () => {
               <p>Aşağıdaki işlemi onaylamak üzeresiniz:</p>
               <ul className="list-unstyled">
                 <li><strong>ID:</strong> {selectedTx._id}</li>
-                <li><strong>Gönderen:</strong> {selectedTx.from ? shortenAddress(selectedTx.from) : 'Sistem'}</li>
                 <li><strong>Alıcı:</strong> {shortenAddress(selectedTx.to)}</li>
                 <li><strong>Miktar:</strong> {selectedTx.amount} MikroCoin</li>
                 <li><strong>Açıklama:</strong> {selectedTx.description || '-'}</li>

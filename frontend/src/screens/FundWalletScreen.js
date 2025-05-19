@@ -1,12 +1,11 @@
 // frontend/src/screens/FundWalletScreen.js
 import React, { useState, useEffect } from 'react';
-import { Form, Button, Row, Col, Card, Alert, Spinner } from 'react-bootstrap'; // Spinner'ı import ettik
+import { Form, Button, Row, Col, Card, Alert, Spinner } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import Loader from '../components/Loader';
 import Message from '../components/Message';
-import { getWalletBalance } from '../redux/slices/walletSlice';
-import { addFunds } from '../redux/slices/walletSlice';
+import { getWalletBalance, addFunds, resetAddFundsSuccess } from '../redux/slices/walletSlice';
 
 const FundWalletScreen = () => {
   const [amount, setAmount] = useState('');
@@ -20,6 +19,7 @@ const FundWalletScreen = () => {
   const { userInfo } = useSelector((state) => state.auth);
   const { 
     balance, 
+    pendingAmount,
     loading: walletLoading, 
     error: walletError,
     addFundsLoading,
@@ -105,7 +105,17 @@ const FundWalletScreen = () => {
 
             <div className="mb-4">
               <h5>Mevcut Bakiye</h5>
-              <h2 className="text-primary">{walletLoading ? <Loader size="sm" /> : `${balance} MikroCoin`}</h2>
+              <h2 className="text-primary">
+                {walletLoading ? <Loader size="sm" /> : `${balance} MikroCoin`}
+              </h2>
+              {/* Bekleyen bakiye gösterimi */}
+              {pendingAmount > 0 && (
+                <div className="mt-1">
+                  <small className="text-warning">
+                    (+{pendingAmount} MikroCoin beklemede)
+                  </small>
+                </div>
+              )}
             </div>
 
             <Form onSubmit={handleAddFunds}>

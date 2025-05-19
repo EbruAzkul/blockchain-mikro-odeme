@@ -1,24 +1,34 @@
-// C:\Users\HUAWEI\blockchain-mikro-odeme\backend\controllers\transactionController.js
+// backend/controllers/transactionController.js
 
 const Transaction = require('../blockchain/Transaction');
 const blockchainService = require('../services/blockchainService');
+const TransactionModel = require('../models/TransactionModel');
 
-// Tüm işlemleri getir
+// Tüm işlemleri getir - Admin kontrolü ve güvenlik eklendi
 exports.getAllTransactions = async (req, res) => {
   try {
     console.log('getAllTransactions endpoint çağrıldı');
+    
+    // Admin kontrolü eklendi
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ 
+        message: 'Bu işlem için yetkiniz bulunmamaktadır. Sadece yöneticiler tüm işlemleri görüntüleyebilir.' 
+      });
+    }
+    
     const transactions = blockchainService.getAllTransactions();
     
-    // İşlemleri formatla
+    // İşlemleri formatla - tutarlı alan adları kullan
     const formattedTransactions = transactions.map(tx => ({
-      id: tx.signature ? tx.signature.substring(0, 24) : `tx_${tx.timestamp}`,
-      fromAddress: tx.fromAddress || 'Sistem',
-      toAddress: tx.toAddress,
+      _id: tx.signature ? tx.signature.substring(0, 24) : `tx_${tx.timestamp}`,
+      from: tx.fromAddress || 'Sistem',
+      to: tx.toAddress,
       amount: tx.amount,
       description: tx.description,
       timestamp: tx.timestamp,
       blockIndex: tx.blockIndex,
-      blockTimestamp: tx.blockTimestamp
+      blockTimestamp: tx.blockTimestamp,
+      status: tx.blockIndex ? 'COMPLETED' : 'PENDING'
     }));
     
     res.json(formattedTransactions);
@@ -28,7 +38,7 @@ exports.getAllTransactions = async (req, res) => {
   }
 };
 
-// Kullanıcının işlemlerini getir
+// Kullanıcının işlemlerini getir - Daha güvenli hale getirildi
 exports.getMyTransactions = async (req, res) => {
   try {
     console.log('getMyTransactions endpoint çağrıldı');
@@ -40,22 +50,23 @@ exports.getMyTransactions = async (req, res) => {
     
     const allTransactions = blockchainService.getAllTransactions();
     
-    // Kullanıcının işlemlerini filtrele
+    // Kullanıcının işlemlerini filtrele - SADECE kendi işlemlerini
     const userTransactions = allTransactions.filter(tx => 
       tx.fromAddress === userAddress || tx.toAddress === userAddress
     );
     
-    // İşlemleri formatla
+    // İşlemleri formatla - tutarlı alan adları ve daha ayrıntılı bilgi
     const formattedTransactions = userTransactions.map(tx => ({
-      id: tx.signature ? tx.signature.substring(0, 24) : `tx_${tx.timestamp}`,
-      fromAddress: tx.fromAddress || 'Sistem',
-      toAddress: tx.toAddress,
+      _id: tx.signature ? tx.signature.substring(0, 24) : `tx_${tx.timestamp}`,
+      from: tx.fromAddress || 'Sistem',
+      to: tx.toAddress,
       amount: tx.amount,
       description: tx.description,
       timestamp: tx.timestamp,
       blockIndex: tx.blockIndex,
       blockTimestamp: tx.blockTimestamp,
-      type: tx.fromAddress === userAddress ? 'OUT' : 'IN'
+      type: tx.fromAddress === userAddress ? 'OUT' : 'IN',
+      status: tx.blockIndex ? 'COMPLETED' : 'PENDING'
     }));
     
     res.json(formattedTransactions);
@@ -65,11 +76,12 @@ exports.getMyTransactions = async (req, res) => {
   }
 };
 
-// İşlem detayını getir
+// İşlem detayını getir - Kullanıcı erişim kontrolü eklendi
 exports.getTransactionById = async (req, res) => {
   try {
     console.log(`getTransactionById endpoint çağrıldı: ${req.params.id}`);
     const txId = req.params.id;
+    const userAddress = req.user.walletAddress;
     
     const allTransactions = blockchainService.getAllTransactions();
     
@@ -85,16 +97,25 @@ exports.getTransactionById = async (req, res) => {
       return res.status(404).json({ message: 'İşlem bulunamadı' });
     }
     
+    // Kullanıcının kendi işlemi olup olmadığını kontrol et
+    if (transaction.fromAddress !== userAddress && transaction.toAddress !== userAddress && !req.user.isAdmin) {
+      return res.status(403).json({ 
+        message: 'Bu işlemi görüntüleme yetkiniz bulunmamaktadır'
+      });
+    }
+    
     // İşlemi formatla
     const formattedTransaction = {
-      id: transaction.signature ? transaction.signature.substring(0, 24) : `tx_${transaction.timestamp}`,
-      fromAddress: transaction.fromAddress || 'Sistem',
-      toAddress: transaction.toAddress,
+      _id: transaction.signature ? transaction.signature.substring(0, 24) : `tx_${transaction.timestamp}`,
+      from: transaction.fromAddress || 'Sistem',
+      to: transaction.toAddress,
       amount: transaction.amount,
       description: transaction.description,
       timestamp: transaction.timestamp,
       blockIndex: transaction.blockIndex,
-      blockTimestamp: transaction.blockTimestamp
+      blockTimestamp: transaction.blockTimestamp,
+      status: transaction.blockIndex ? 'COMPLETED' : 'PENDING',
+      type: transaction.fromAddress === userAddress ? 'OUT' : 'IN'
     };
     
     res.json(formattedTransaction);
@@ -139,9 +160,9 @@ exports.createTransaction = async (req, res) => {
         success: true,
         message: `${numericAmount} MikroCoin başarıyla gönderildi`,
         transaction: {
-          id: transaction.signature ? transaction.signature.substring(0, 24) : `tx_${transaction.timestamp}`,
-          fromAddress: transaction.fromAddress,
-          toAddress: transaction.toAddress,
+          _id: transaction.signature ? transaction.signature.substring(0, 24) : `tx_${transaction.timestamp}`,
+          from: transaction.fromAddress,
+          to: transaction.toAddress,
           amount: transaction.amount,
           description: transaction.description,
           timestamp: transaction.timestamp,
@@ -158,8 +179,59 @@ exports.createTransaction = async (req, res) => {
   }
 };
 
-// transactionController.js dosyasına ekleyeceğiniz senkronizasyon fonksiyonu
-// Bu fonksiyonu mevcut transactionController.js dosyanızın sonuna ekleyin
+// İşlem onaylama - Kullanıcı yetki kontrolü eklendi
+exports.processTransaction = async (req, res) => {
+  try {
+    const { privateKey } = req.body;
+    const transactionId = req.params.id;
+    const userAddress = req.user.walletAddress;
+    
+    if (!privateKey) {
+      return res.status(400).json({ message: 'Özel anahtar gereklidir' });
+    }
+    
+    // İşlemi bul
+    const allTransactions = blockchainService.getAllTransactions();
+    const pendingTransactions = allTransactions.filter(tx => !tx.blockIndex);
+    
+    const transaction = pendingTransactions.find(tx => {
+      if (tx.signature) {
+        return tx.signature.substring(0, 24) === transactionId;
+      }
+      return false;
+    });
+    
+    if (!transaction) {
+      return res.status(404).json({ message: 'İşlem bulunamadı veya zaten tamamlanmış' });
+    }
+    
+    // Kullanıcının kendi gönderdiği işlem olup olmadığını kontrol et
+    if (transaction.fromAddress !== userAddress) {
+      return res.status(403).json({ 
+        message: 'Bu işlemi onaylama yetkiniz bulunmamaktadır. Sadece kendi gönderdiğiniz işlemleri onaylayabilirsiniz.'
+      });
+    }
+    
+    // İşlemi işle/onayla
+    const result = await blockchainService.processTransaction(transactionId, privateKey);
+    
+    res.json({
+      success: true,
+      message: 'İşlem başarıyla onaylandı',
+      transaction: {
+        _id: transaction.signature ? transaction.signature.substring(0, 24) : `tx_${transaction.timestamp}`,
+        from: transaction.fromAddress,
+        to: transaction.toAddress,
+        amount: transaction.amount,
+        timestamp: transaction.timestamp,
+        status: 'COMPLETED'
+      }
+    });
+  } catch (error) {
+    console.error('İşlem onaylama hatası:', error);
+    res.status(500).json({ message: error.message || 'İşlem onaylanamadı' });
+  }
+};
 
 // İşlem durumlarını senkronize et
 exports.syncTransactionStatus = async (req, res) => {

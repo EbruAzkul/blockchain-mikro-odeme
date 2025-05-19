@@ -1,19 +1,35 @@
-// C:\Users\HUAWEI\blockchain-mikro-odeme\backend\controllers\walletController.js
+// backend/controllers/walletController.js
 
 const blockchainService = require('../services/blockchainService');
 const Transaction = require('../blockchain/Transaction');
 
-// Cüzdan bakiyesini getir
+// Cüzdan bakiyesini getir - Sadece tamamlanmış işlemleri dahil et
 exports.getWalletBalance = async (req, res) => {
   try {
-    const balance = await blockchainService.getBalance(req.user.walletAddress);
-    res.json({ balance });
+    // onlyCompleted parametresini al (varsayılan olarak true)
+    const onlyCompleted = req.query.onlyCompleted !== 'false';
+    
+    // Tamamlanmış işlemleri kullanarak bakiyeyi hesapla
+    const balance = await blockchainService.getBalance(req.user.walletAddress, onlyCompleted);
+    
+    // Bekleyen işlemler için ayrı bir bakiye hesapla
+    const pendingAmount = await blockchainService.getPendingBalance(req.user.walletAddress);
+    
+    // API yanıtını oluştur
+    res.json({ 
+      balance: balance,
+      pendingAmount: pendingAmount,
+      totalBalance: balance + pendingAmount,
+      includesPending: !onlyCompleted,
+      userId: req.user._id // Güvenlik kontrolü için kullanıcı ID'sini de döndür
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Bakiye getirme hatası:', error);
+    res.status(500).json({ message: error.message || 'Bakiye alınamadı' });
   }
 };
 
-// Bakiye yükleme
+// Bakiye yükleme - İşlem durumu kontrolü eklendi
 exports.addFunds = async (req, res) => {
   try {
     const { amount, privateKey } = req.body;
@@ -29,9 +45,13 @@ exports.addFunds = async (req, res) => {
       privateKey
     );
     
+    // İşlem durumunu kontrol et - Backend'de hemen tamamlandı olarak işaretlenebilir
+    // veya beklemede olarak döndürülebilir
+    const transactionStatus = 'PENDING'; // veya 'COMPLETED' - sistem tasarımına göre
+    
     res.status(201).json({
       success: true,
-      message: `${amount} MikroCoin başarıyla yüklendi`,
+      message: `${amount} MikroCoin başarıyla yüklendi${transactionStatus === 'PENDING' ? ' ve işleniyor' : ''}`,
       transaction: {
         _id: transaction.signature.substring(0, 24),
         from: transaction.fromAddress,
@@ -39,10 +59,11 @@ exports.addFunds = async (req, res) => {
         amount: transaction.amount,
         description: transaction.description,
         timestamp: transaction.timestamp,
-        status: 'COMPLETED'
+        status: transactionStatus
       }
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Bakiye yükleme hatası:', error);
+    res.status(500).json({ message: error.message || 'Bakiye yüklenemedi' });
   }
 };

@@ -19,7 +19,8 @@ const initialState = {
   errorMessage: '',
 };
 
-// Tüm işlemleri getir
+// getAllTransactions fonksiyonu artık sadece admin için kullanılabilir
+// Normal kullanıcılar için getTransactions fonksiyonu kullanılmalı
 export const getAllTransactions = createAsyncThunk(
   'transactions/getAll',
   async (_, { getState, rejectWithValue }) => {
@@ -28,6 +29,11 @@ export const getAllTransactions = createAsyncThunk(
 
       if (!auth.userInfo || !auth.userInfo.token) {
         return rejectWithValue('Kullanıcı oturumu geçersiz');
+      }
+
+      // Admin kontrolü eklenebilir
+      if (!auth.userInfo.isAdmin) {
+        return rejectWithValue('Bu fonksiyon sadece yöneticiler için kullanılabilir');
       }
 
       const config = {
@@ -41,19 +47,13 @@ export const getAllTransactions = createAsyncThunk(
         config
       );
 
-      // Veri güvenlik kontrolü - backend'den dönen verilerin geçerli olduğundan emin ol
+      // Veri güvenlik kontrolü
       if (!Array.isArray(data)) {
         console.error('Geçersiz işlem verisi alındı:', data);
         return rejectWithValue('İşlem verileri geçersiz format');
       }
 
-      // Şu anki kullanıcıya ait işlemleri filtrele
-      const userWalletAddress = auth.userInfo.walletAddress;
-      const filteredTransactions = data.filter(tx => 
-        tx.from === userWalletAddress || tx.to === userWalletAddress
-      );
-
-      return filteredTransactions;
+      return data;
     } catch (error) {
       return rejectWithValue(
         error.response && error.response.data.message
@@ -64,7 +64,7 @@ export const getAllTransactions = createAsyncThunk(
   }
 );
 
-// Kullanıcının işlemlerini getir - DashboardScreen için
+// Kullanıcının işlemlerini getir - Standart kullanıcılar için
 export const getTransactions = createAsyncThunk(
   'transactions/get',
   async (_, { getState, rejectWithValue }) => {
@@ -92,13 +92,14 @@ export const getTransactions = createAsyncThunk(
         return rejectWithValue('İşlem verileri geçersiz format');
       }
 
-      // Şu anki kullanıcıya ait işlemleri filtrele (ekstra güvenlik)
+      // Ekstra güvenlik kontrolü - sadece kendi işlemlerini göster
       const userWalletAddress = auth.userInfo.walletAddress;
-      const filteredTransactions = data.filter(tx => 
-        tx.from === userWalletAddress || tx.to === userWalletAddress
+      return data.filter(tx => 
+        tx.from === userWalletAddress || 
+        tx.to === userWalletAddress ||
+        // Sistem işlemleri (mining ödülleri vb.) gösterilebilir
+        tx.from === 'system' || tx.from === null
       );
-
-      return filteredTransactions;
     } catch (error) {
       return rejectWithValue(
         error.response && error.response.data.message
@@ -133,7 +134,7 @@ export const getTransactionById = createAsyncThunk(
 
       // Veri güvenlik kontrolü - bu işlem gerçekten kullanıcıya ait mi?
       const userWalletAddress = auth.userInfo.walletAddress;
-      if (data.from !== userWalletAddress && data.to !== userWalletAddress) {
+      if (data.from !== userWalletAddress && data.to !== userWalletAddress && !auth.userInfo.isAdmin) {
         console.error('Yetkilendirme hatası: İşlem bu kullanıcıya ait değil');
         return rejectWithValue('Bu işlemi görüntüleme yetkiniz yok');
       }
@@ -166,6 +167,11 @@ export const createTransaction = createAsyncThunk(
           Authorization: `Bearer ${auth.userInfo.token}`,
         },
       };
+
+      // Güvenlik kontrolü - kendi kendine gönderim engelleme
+      if (transactionData.toAddress === auth.userInfo.walletAddress) {
+        return rejectWithValue('Kendinize transfer yapamazsınız');
+      }
 
       const { data } = await axios.post(
         'http://localhost:5000/api/transactions/create',
@@ -202,6 +208,14 @@ export const processTransaction = createAsyncThunk(
         },
       };
 
+      // İşlem doğrulama - sadece kullanıcının kendi gönderdiği işlemleri işleyebilmesi
+      const { transactions } = getState().transactions;
+      const transaction = transactions.find(tx => tx._id === transactionId);
+      
+      if (transaction && transaction.from !== auth.userInfo.walletAddress) {
+        return rejectWithValue('Bu işlemi işleme yetkiniz yok');
+      }
+
       const { data } = await axios.post(
         `http://localhost:5000/api/transactions/${transactionId}/process`,
         { privateKey },
@@ -230,10 +244,13 @@ const transactionSlice = createSlice({
     resetCreateSuccess: (state) => {
       state.createSuccess = false;
     },
+    resetProcessSuccess: (state) => {
+      state.processSuccess = false;
+    }
   },
   extraReducers: (builder) => {
     builder
-      // Get All Transactions
+      // Get All Transactions (Admin only)
       .addCase(getAllTransactions.pending, (state) => {
         state.loading = true;
         state.isLoading = true;
@@ -327,5 +344,5 @@ const transactionSlice = createSlice({
   },
 });
 
-export const { resetTransactionState, clearTransaction, resetCreateSuccess } = transactionSlice.actions;
+export const { resetTransactionState, clearTransaction, resetCreateSuccess, resetProcessSuccess } = transactionSlice.actions;
 export default transactionSlice.reducer;

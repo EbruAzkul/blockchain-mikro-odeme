@@ -1,10 +1,11 @@
 // frontend/src/screens/DashboardScreen.js
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Alert, Form, Table, Badge, Spinner } from 'react-bootstrap';
+import { Row, Col, Card, Button, Alert, Form, Spinner } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link } from 'react-router-dom';
 import Loader from '../components/Loader';
 import Message from '../components/Message';
+import TransactionList from '../components/TransactionList';
 import { getWalletBalance } from '../redux/slices/walletSlice';
 import { getTransactions, createTransaction, resetCreateSuccess } from '../redux/slices/transactionSlice';
 import axios from 'axios';
@@ -30,7 +31,12 @@ const DashboardScreen = () => {
 
   // Redux state'leri
   const { userInfo } = useSelector((state) => state.auth);
-  const { balance, loading: walletLoading, error: walletError } = useSelector((state) => state.wallet);
+  const { 
+    balance, 
+    pendingAmount, 
+    loading: walletLoading, 
+    error: walletError 
+  } = useSelector((state) => state.wallet);
   const { 
     transactions, 
     loading: transactionsLoading, 
@@ -44,7 +50,7 @@ const DashboardScreen = () => {
     // Kullanıcı girişi kontrolü
     if (!userInfo) {
       navigate('/login');
-      return; // Daha fazla işlem yapılmasını önlemek için return ekle
+      return;
     } 
     
     // Veri yükleme işlemlerini başlat
@@ -57,7 +63,7 @@ const DashboardScreen = () => {
       setRefreshingData(true);
       // Cüzdan bakiyesi ve işlemleri getir
       dispatch(getWalletBalance());
-      dispatch(getTransactions());
+      dispatch(getTransactions()); // getAllTransactions değil, getTransactions kullan
       fetchBlockchainInfo();
     } catch (error) {
       console.error('Dashboard veri yükleme hatası:', error);
@@ -195,12 +201,6 @@ const DashboardScreen = () => {
     }));
   };
 
-  // Adres kısaltma
-  const shortenAddress = (address) => {
-    if (!address) return '';
-    return `${address.substring(0, 8)}...${address.substring(address.length - 6)}`;
-  };
-
   return (
     <>
       <h1 className="my-4">Dashboard</h1>
@@ -260,6 +260,12 @@ const DashboardScreen = () => {
                 <div>
                   <small className="text-muted">Bakiye:</small>
                   <h2 className="mb-0">{balance} MikroCoin</h2>
+                  {/* Bekleyen bakiye gösterimi */}
+                  {pendingAmount > 0 && (
+                    <small className="text-warning">
+                      (+{pendingAmount} MikroCoin beklemede)
+                    </small>
+                  )}
                 </div>
               </Card.Body>
             </Card>
@@ -300,7 +306,7 @@ const DashboardScreen = () => {
                   )}
                 </Button>
                 <Button variant="outline-primary" as={Link} to="/transactions">
-                  Tüm İşlemleri Gör
+                  Tüm İşlemlerimi Gör
                 </Button>
               </div>
             </Card.Body>
@@ -322,7 +328,7 @@ const DashboardScreen = () => {
                   <p><strong>Önceki Blok Hash:</strong> {blockchainInfo.latestBlock?.previousHash ? 
                     blockchainInfo.latestBlock.previousHash.substring(0, 16) + '...' : 'Genesis'}</p>
                   <p><strong>Zincir Geçerli Mi:</strong> {blockchainInfo.isValid ? 
-                    <Badge bg="success">Evet</Badge> : <Badge bg="danger">Hayır</Badge>}</p>
+                    <span className="text-success">Evet</span> : <span className="text-danger">Hayır</span>}</p>
                   <p><strong>Bekleyen İşlemler:</strong> {blockchainInfo.pendingTransactions || 0}</p>
                   <p><strong>Son Güncelleme:</strong> {blockchainInfo.timestamp ? 
                     new Date(blockchainInfo.timestamp).toLocaleString() : 'Bilinmiyor'}</p>
@@ -416,7 +422,7 @@ const DashboardScreen = () => {
           ) : (
             <Card>
               <Card.Header as="h5" className="d-flex justify-content-between align-items-center">
-                Son İşlemler
+                Son İşlemlerim
                 <div>
                   <Button
                     variant="outline-primary"
@@ -456,45 +462,12 @@ const DashboardScreen = () => {
                   </div>
                 ) : (
                   <div className="table-responsive">
-                    <Table className="table table-striped table-hover">
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Tipi</th>
-                          <th>Kimden/Kime</th>
-                          <th>Miktar</th>
-                          <th>Durum</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {/* Tüm işlemleri göster, filtreleme yok */}
-                        {transactions.slice(0, 5).map((tx) => (
-                          <tr key={tx._id || `tx-${Math.random()}`}>
-                            <td>{tx._id ? tx._id.substring(0, 8) + '...' : 'N/A'}</td>
-                            <td>
-                              {tx.from === userInfo?.walletAddress ? (
-                                <Badge bg="danger">Gönderim</Badge>
-                              ) : (
-                                <Badge bg="success">Alım</Badge>
-                              )}
-                            </td>
-                            <td>
-                              {tx.from === userInfo?.walletAddress
-                                ? shortenAddress(tx.to)
-                                : shortenAddress(tx.from)}
-                            </td>
-                            <td>{tx.amount || 0} MikroCoin</td>
-                            <td>
-                              {tx.status === 'COMPLETED' ? (
-                                <Badge bg="success">Tamamlandı</Badge>
-                              ) : (
-                                <Badge bg="warning">Beklemede</Badge>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                    {/* TransactionList bileşenini kullan - Bu, kullanıcı işlemlerini filtreleyecektir */}
+                    <TransactionList 
+                      transactions={transactions.slice(0, 5)} 
+                      showDetails={false}
+                    />
+                    
                     <div className="text-center mt-3">
                       {transactions.length > 5 && (
                         <Button 
@@ -503,7 +476,7 @@ const DashboardScreen = () => {
                           as={Link}
                           to="/transactions"
                         >
-                          Tüm İşlemleri Görüntüle ({transactions.length})
+                          Tüm İşlemlerimi Görüntüle ({transactions.length})
                         </Button>
                       )}
                     </div>
