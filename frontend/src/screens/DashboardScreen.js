@@ -9,6 +9,8 @@ import TransactionList from '../components/TransactionList';
 import { getWalletBalance } from '../redux/slices/walletSlice';
 import { getTransactions, createTransaction, resetCreateSuccess } from '../redux/slices/transactionSlice';
 import axios from 'axios';
+import SubscriptionWidget from '../components/SubscriptionWidget';
+
 
 const DashboardScreen = () => {
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -305,13 +307,23 @@ const DashboardScreen = () => {
                     'Madencilik Yap'
                   )}
                 </Button>
+                <Button
+                    variant="info"
+                    as={Link}
+                    to="/subscriptions"
+                    className="mb-2"
+                >
+                  <i className="fas fa-crown me-2"></i>
+                  Abonelikler
+                </Button>
                 <Button variant="outline-primary" as={Link} to="/transactions">
                   Tüm İşlemlerimi Gör
                 </Button>
               </div>
             </Card.Body>
           </Card>
-          
+          {userInfo && <SubscriptionWidget userInfo={userInfo} />}
+
           {/* Blockchain Bilgileri */}
           <Card>
             <Card.Header as="h5">Blockchain Durumu</Card.Header>

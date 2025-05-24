@@ -23,11 +23,16 @@ app.use(express.json());
 const userRoutes = require('./routes/userRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const walletRoutes = require('./routes/walletRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+
+// Subscription service'i başlat
+const subscriptionService = require('./services/subscriptionService');
 
 // Basit test rotası
 app.get('/', (req, res) => {

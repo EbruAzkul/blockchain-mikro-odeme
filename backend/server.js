@@ -3,10 +3,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const userRoutes = require('./routes/userRoutes');
-const walletRoutes = require('./routes/walletRoutes');
-const blockchainRoutes = require('./routes/blockchainRoutes');
-const transactionRoutes = require('./routes/transactionRoutes'); // Eklendi
 
 // .env dosyasını yükle
 dotenv.config();
@@ -39,7 +35,7 @@ app.use(express.json());  // JSON verilerini işle
 // CORS yapılandırması - CORS hatalarını önlemek için
 app.use(cors({
   origin: '*', // Geliştirme için tüm origins'lere izin ver
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -50,33 +46,53 @@ const { protect } = require('./middleware/auth');
 app.use((req, res, next) => {
   const start = Date.now();
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  
+
   // İstek gövdesini logla
   if (['POST', 'PUT'].includes(req.method) && req.body) {
-    console.log('Request body:', req.body);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
   }
-  
+
   // İstek tamamlandığında log
   res.on('finish', () => {
     const duration = Date.now() - start;
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
   });
-  
+
   next();
+});
+
+// Routes - ÖNCE route'ları tanımlayın
+const userRoutes = require('./routes/userRoutes');
+const walletRoutes = require('./routes/walletRoutes');
+const blockchainRoutes = require('./routes/blockchainRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+
+// Ana sayfa rotası
+app.get('/', (req, res) => {
+  res.json({
+    message: 'MikroCoin Blockchain API çalışıyor!',
+    testMode: testMode,
+    endpoints: {
+      users: '/api/users',
+      wallet: '/api/wallet',
+      blockchain: '/api/blockchain',
+      transactions: '/api/transactions',
+      subscriptions: '/api/subscriptions'
+    }
+  });
 });
 
 // API rotaları
 app.use('/api/users', userRoutes);
 app.use('/api/wallet', protect, walletRoutes);
 app.use('/api/blockchain', blockchainRoutes);
-app.use('/api/transactions', transactionRoutes); // Eklendi
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/subscriptions', subscriptionRoutes); // Subscription routes
 
-// Ana sayfa rotası
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'MikroCoin Blockchain API çalışıyor!',
-    testMode: testMode
-  });
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Test endpoint çalışıyor!' });
 });
 
 // Basit hata işleme middleware'leri
@@ -98,11 +114,16 @@ app.use((err, req, res, next) => {
 // MongoDB bağlantısı
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/blockchain-mikro-odeme';
 mongoose.connect(MONGO_URI)
-  .then(() => {
-    console.log('MongoDB bağlantısı başarılı!');
-    // Sunucuyu başlat
-    app.listen(PORT, () => console.log(`Sunucu ${PORT} portunda çalışıyor!`));
-  })
-  .catch((error) => {
-    console.error('MongoDB bağlantı hatası:', error.message);
-  });
+    .then(() => {
+      console.log('MongoDB bağlantısı başarılı!');
+
+      // Subscription service'i başlat (MongoDB bağlantısından SONRA)
+      const subscriptionService = require('./services/subscriptionService');
+      console.log('Abonelik servisi başlatıldı');
+
+      // Sunucuyu başlat
+      app.listen(PORT, () => console.log(`Sunucu ${PORT} portunda çalışıyor!`));
+    })
+    .catch((error) => {
+      console.error('MongoDB bağlantı hatası:', error.message);
+    });

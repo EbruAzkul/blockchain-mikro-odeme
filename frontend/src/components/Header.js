@@ -43,6 +43,9 @@ const Header = () => {
                   <Nav.Link as={Link} to="/transactions">
                     <i className="fas fa-exchange-alt"></i> İşlemler
                   </Nav.Link>
+                  <Nav.Link as={Link} to="/subscriptions">
+                    <i className="fas fa-exchange-alt"></i> Abonelik Sistemi
+                  </Nav.Link>
                   <NavDropdown 
                     title={
                       <>
